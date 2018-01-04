@@ -56,16 +56,16 @@ class _Grid(object):
         col, row = self.rev * (x, y)
         return int(col), int(row)
 
-def GmudsGrid(Grid):
+def GmudsGrid(_Grid):
     _p_str = """+proj=lcc +lat_1=30 +lat_2=62 +lat_0=0 +lon_0=105 +x_0=0 +y_0=0 
                 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"""
     _gt = (-3000000, 1000, 0, 5000000, -1000, 0)
 
-def UtmGrid(Grid):
+def UtmGrid(_Grid):
     _p_str ="+proj=utm +zone=45 +datum=WGS84 +units=m +no_defs"
     _gt = (120000, 30, 0, 3000000, -30, 0)
 
-def LatLonGrid(Grid):
+def LatLonGrid(_Grid):
     p_latlon_s = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
     _gt = (-3600, 1, 0, -900, -1, 0)
 
