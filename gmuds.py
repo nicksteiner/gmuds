@@ -2,26 +2,18 @@ import os
 import sys
 import pickle
 
+import numpy as np
 import pyproj
 import xarray as xr
 from affine import Affine
 
 # class
-
-
 class _Grid(object):
-
-    @property
-    def p(self):
-        return pyproj.Proj(self._p_str)
-
-    @property
-    def fwd(self):
-        return Affine.from_gdal(*self._gt)
-
-    @property
-    def rev(self):
-        return ~self.fwd
+    def __init__(self):
+        self.p = pyproj.Proj(self._p_str)
+        self.gt = (self._x0, self._res, 0, self._y0, 0, -self._res)
+        self.fwd = Affine.from_gdal(*self.gt)
+        self.rev = ~self.fwd
 
     def transform(self, grid, x, y):
         return pyproj.transform(self.p, grid.p, x, y)
@@ -52,22 +44,33 @@ class _Grid(object):
         :return: (col, row) - array indices
         """
         if grid is not None:
-            x, y = self.transform(grid, x, y)
+            x, y = grid.transform(self, x, y)
         col, row = self.rev * (x, y)
         return int(col), int(row)
 
-def GmudsGrid(_Grid):
+
+class GmudsGrid(_Grid):
     _p_str = """+proj=lcc +lat_1=30 +lat_2=62 +lat_0=0 +lon_0=105 +x_0=0 +y_0=0 
                 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"""
-    _gt = (-3000000, 1000, 0, 5000000, -1000, 0)
+    _res = 1000
+    _x0 = -3000000
+    _y0 = 5000000
+    _size = (2000, 3000)
 
-def UtmGrid(_Grid):
+class UtmGrid(_Grid):
     _p_str ="+proj=utm +zone=45 +datum=WGS84 +units=m +no_defs"
-    _gt = (120000, 30, 0, 3000000, -30, 0)
+    _res= 30
+    _x0 = 120000
+    _y0 = 3300000
+    _size = (10000, 16000)
 
-def LatLonGrid(_Grid):
-    p_latlon_s = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
-    _gt = (-3600, 1, 0, -900, -1, 0)
+class LatLonGrid(_Grid):
+    _p_str = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+    _res= 1
+    _x0 = -1800
+    _y0 = 900
+    _size = (1800, 3600)
+
 
 class Array(object):
 
