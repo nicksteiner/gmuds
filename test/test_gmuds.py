@@ -53,6 +53,8 @@ def test_get_bounds():
     utm_grid = gm.UtmGrid()
     gmuds_grid = gm.GmudsGrid()
     latln_grid = gm.LatLonGrid()
+    utm_grid_trishuli = gm.UtmGridTrishuli()
+
 
     utm_bnds = 270000, 390000, 3060000, 3240000
     utm_bounds = [
@@ -62,7 +64,9 @@ def test_get_bounds():
         (utm_bnds[1], utm_bnds[2]),
         (utm_bnds[0], utm_bnds[2])
     ]
-    #print(utm_bounds_)
+    #print(utm_grid_trishuli.coords)
+
+    #print(utm_bounds)
 
     latlon_bounds = [latln_grid.itransform(utm_grid, x, y) for x, y in utm_bounds]
     wkt_poly = 'POLYGON(({}))'.format(','.join(['{} {}'.format(*ln_lt) for ln_lt in latlon_bounds]))
@@ -73,15 +77,48 @@ def test_get_bounds():
     #print(colrow_str)
 
     utm_bounds_ = [gmuds_grid.forward(col, row, grid=utm_grid) for col, row in colrow_bounds]
-    assert gm.np.isclose(utm_bounds_, utm_bounds, rtol=gmuds_grid._res/2)
-
+    assert gm.np.isclose(utm_bounds_, utm_bounds, rtol=gmuds_grid._res/2).all()
 
 def test_array():
-    pass
+    nc_file = 'test/Atmd2008051603.nc4'
+    try:
+        assert os.path.exists(nc_file)
+    except:
+        raise("Test data not loaded, too big for github: {}".format(nc_file))
+    gm.Dataset(nc_file)
+    assert True
 
+def test_dataset_subset():
+    nc_file = 'test/Atmd2008051603.nc4'
+    try:
+        assert os.path.exists(nc_file)
+    except:
+        raise("Test data not loaded, too big for github: {}".format(nc_file))
+    array = gm.Dataset(nc_file)
 
-def test_array_subset():
-    pass
+    utm_grid_trishuli = gm.UtmGridTrishuli()
+    x0, x1, y0, y1 = utm_grid_trishuli.bounds
+    subset = array.subset(x0, x1, y0, y1, coords_grid=utm_grid_trishuli)
+    assert True
+
+def test_write_geotiff():
+    nc_file = 'test/Atmd2008051603.nc4'
+    d_var = 'Tad'
+    try:
+        assert os.path.exists(nc_file)
+    except:
+        raise("Test data not loaded, too big for github: {}".format(nc_file))
+    array = gm.Dataset(nc_file)
+
+    utm_grid_trishuli = gm.UtmGridTrishuli()
+    x0, x1, y0, y1 = array.get_max_bounds(utm_grid_trishuli)
+    subset = array.subset(x0, x1, y0, y1)
+    subset_ = array.subset_bygrid(utm_grid_trishuli)
+    assert subset_ == subset
+    data_array = subset[d_var]
+    array.write_geotiff(data_array, 'test/test_{}.tif'.format(d_var))
+
+    assert True
 
 if __name__ == '__main__':
     test_gmuds_grid()
@@ -91,3 +128,6 @@ if __name__ == '__main__':
     test_latlon2gmuds_inverse()
     test_latlon2gmuds_forward()
     test_get_bounds()
+    test_array()
+    test_dataset_subset()
+    test_write_geotiff()
