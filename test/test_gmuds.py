@@ -61,37 +61,6 @@ def test_latlon2gmuds_forward():
     assert gm.np.isclose((lon_, lat_), (lon, lat)).all()
 
 
-def test_get_bounds():
-    utm_grid = gm.UtmGrid()
-    gmuds_grid = gm.GmudsGrid()
-    latln_grid = gm.LatLonGrid()
-    utm_grid_trishuli = gm.UtmGridTrishuli()
-
-
-    utm_bnds = 270000, 390000, 3060000, 3240000
-    utm_bounds = [
-        (utm_bnds[0], utm_bnds[2]),
-        (utm_bnds[0], utm_bnds[3]),
-        (utm_bnds[1], utm_bnds[3]),
-        (utm_bnds[1], utm_bnds[2]),
-        (utm_bnds[0], utm_bnds[2])
-    ]
-    #print(utm_grid_trishuli.coords)
-
-    #print(utm_bounds)
-
-    latlon_bounds = [latln_grid.itransform(utm_grid, x, y) for x, y in utm_bounds]
-    wkt_poly = 'POLYGON(({}))'.format(','.join(['{} {}'.format(*ln_lt) for ln_lt in latlon_bounds]))
-    #print(wkt_poly)
-
-    colrow_bounds = [gmuds_grid.inverse(x, y, grid=utm_grid) for x, y in utm_bounds]
-    colrow_str  = 'Bounds: {}'.format(','.join(['{} {}'.format(*ln_lt) for ln_lt in colrow_bounds]))
-    #print(colrow_str)
-
-    utm_bounds_ = [gmuds_grid.forward(col, row, grid=utm_grid) for col, row in colrow_bounds]
-    assert gm.np.isclose(utm_bounds_, utm_bounds, rtol=gmuds_grid._res/2).all()
-
-
 def test_array():
     nc_file = 'test/Atmd2008051603.nc4'
     try:
@@ -110,9 +79,9 @@ def test_dataset_subset():
         raise("Test data not loaded, too big for github: {}".format(nc_file))
     array = gm.Ambient(nc_file)
 
-    utm_grid_trishuli = gm.UtmGridTrishuli()
-    x0, x1, y0, y1 = utm_grid_trishuli.bounds
-    subset = array.subset(x0, x1, y0, y1, coords_grid=utm_grid_trishuli)
+    gmuds_grid_trishuli = gm.GmudGridTrishuli()
+    x0, x1, y0, y1 = gmuds_grid_trishuli.bounds
+    subset = array.subset(x0, x1, y0, y1, coords_grid=gmuds_grid_trishuli)
     assert True
 
 
@@ -134,6 +103,7 @@ def test_write_geotiff():
     array.write_geotiff(data_array, 'test/test_{}.tif'.format(d_var))
 
     assert True
+
 
 def test_write_full_geotiff():
     nc_file = 'test/Atmd2008051603.nc4'
@@ -255,19 +225,18 @@ def test_write_latlon():
 
 if __name__ == '__main__':
 
-    test_gmuds_grid()
-    test_gmuds_transform()
-    test_gmuds_forward()
-    test_latlon2gmuds_transform()
-    test_latlon2gmuds_inverse()
-    test_latlon2gmuds_forward()
-    test_get_bounds()
-    test_array()
-    test_dataset_subset()
-    test_write_geotiff()
-    test_sw()
-    test_wind()
-    test_merge()
+    #test_gmuds_grid()
+    #test_gmuds_transform()
+    #test_gmuds_forward()
+    #test_latlon2gmuds_transform()
+    #test_latlon2gmuds_inverse()
+    #test_latlon2gmuds_forward()
+    #test_array()
+    #test_dataset_subset()
+    #test_write_geotiff()
+    #test_sw()
+    #test_wind()
+    #test_merge()
     #test_data_lookup()
     #write_lu_pickle()
     #test_time_series()
@@ -276,6 +245,6 @@ if __name__ == '__main__':
     #test_lu_time_series()
     #test_write_time_series()
 
-    #test_write_latlon()
+    test_write_latlon()
 
     pass

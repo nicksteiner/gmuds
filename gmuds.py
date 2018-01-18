@@ -110,16 +110,18 @@ class GmudGridTrishuli(_Grid):
     _p_str = """+proj=lcc +lat_1=30 +lat_2=62 +lat_0=0 +lon_0=105 +x_0=0 +y_0=0 
                 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"""
     _res= 1000
-    _x0 = -2003000
-    _y0 = 3878000
+    _x0 = -2004000
+    _y0 = 3877000
+
     _shape = (221, 168)
 
 """[(-2007500.0, 3881500.0),
- (-1847500.0, 3881500.0),
- (-1847500.0, 3677500.0),
- (-2007500.0, 3677500.0),
- (-2007500.0, 3881500.0)]
+    (-1847500.0, 3881500.0),
+    (-1847500.0, 3677500.0),
+    (-2007500.0, 3677500.0),
+    (-2007500.0, 3881500.0)]
 """
+
 class LatLonGrid(_Grid):
     _p_str = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
     _res= 1
@@ -359,36 +361,73 @@ def write_daily():
 
 def write_latlon():
 
+    # Trishuli Basin Lat/Lon Boundaries from shapefile (trishuli.shp)
     xMin, yMin = 84.9219, 27.7445
     xMax, yMax = 85.7988, 29.0059
 
+    # Rounded lat/lon bounds (1/4 degree)
+    # These will be different than actual bounds since they must
+    # fall on GMUDS-GRID ROW.COL Grid (Azimuthal)
     xMin, yMin = 84.5, 27.5
     xMax, yMax = 86.0, 29.5
-
     tri_bounds_ll = [(xMin, yMin), (xMax, yMin), (xMax, yMax), (xMin, yMax), (xMin, yMin)]
 
+    # get values from file
     nc_file = xr.open_dataset('./test/ts.nc4')
-
     easting_ = nc_file.easting.values
     northing_ = nc_file.northing.values
+    gmuds_bounds = [(easting_[0], northing_[0]), (easting_[-1], northing_[0]),
+                    (easting_[-1], northing_[-1]), (easting_[0], northing_[-1]),
+                    (easting_[0], northing_[0])]
 
+    # gmuds/latlon grid objects
+    src_grid = get_grid('gmuds')()
+    ll_grid =  get_grid('latlon')()
+    dst_grid = get_grid('trishuli')()
+
+    # calc lat/lon for gmud grid vertices
     easting, northing = np.meshgrid(easting_, northing_)
+    lons, lats = ll_grid.itransform(src_grid, easting, northing)
 
-    dst_grid = get_grid('gmuds')()
-    ll_grid = LatLonGrid()
+    # GDAL geotransform
 
-    lons, lats = ll_grid.itransform(dst_grid, easting, northing)
-    tri_bounds = [(easting_[0], northing_[0]), (easting_[-1], northing_[0]), (easting_[-1], northing_[-1]), (easting_[0], northing_[-1]), (easting_[0], northing_[0])]
-    wkt_str = 'POLYGON(({}))'.format(','.join(['{} {}'.format(*ll_grid.itransform(dst_grid, x, y)) for (x, y) in dst_grid.coords]))
-    wkt_str_tri = 'POLYGON(({}))'.format(','.join(['{} {}'.format(*ll_grid.itransform(dst_grid, x, y)) for (x, y) in tri_bounds]))
+    gt_fromDat = (easting_[0], 1000, 0, northing_[0], 0, -1000)
+    gt_fromObj = (dst_grid._x0, dst_grid._res, 0, dst_grid._y0, 0, -dst_grid._res)
+    print('# to grid edges')
+    print('geotransform = ({}, {}, {}, {}, {}, {})'.format(*gt_fromObj))
+    print('# to grid centers')
+    print('geotransform = ({}, {}, {}, {}, {}, {})'.format(*gt_fromDat))
 
+    # to copy and paste into QGIS
+    wkt_str_FromCalc = 'POLYGON(({}))'.format(','.join(['{} {}'.format(*ll_grid.itransform(src_grid, x, y)) for (x, y) in dst_grid.coords]))
+    wkt_str_FromData = 'POLYGON(({}))'.format(','.join(['{} {}'.format(*ll_grid.itransform(src_grid, x, y)) for (x, y) in gmuds_bounds]))
+    print(wkt_str_FromCalc)
+    print(wkt_str_FromData)
+    # write NetCDF
     latlon_ds = {}
     latlon_ds['latitude' ] = (('y', 'x'), lats)
     latlon_ds['longitude'] = (('y', 'x'), lons)
-    coords = {'easting':  (('x'), easting ),
-              'northing': (('y'), northing)}
+    coords = {'easting':  (('x'), easting_  ),
+              'northing': (('y'), northing_ )}
     data_set = xr.Dataset(latlon_ds, coords=coords)
-    data_set.to_netcdf(os.path.join(DAT_PATH, 'latlon_trishuli_gmu_ds.nc4'), mode='w')
+    data_set.to_netcdf('./test/latlon_trishuli_gmu_ds.nc4', mode='w')
+
+    # write GeoTiff from obj
+    _args = dict(driver='GTiff', height=dst_grid._shape[0], width=dst_grid._shape[1], count=2, dtype='float64',
+                 crs=dst_grid._p_str,  transform=dst_grid.fwd)
+    with rio.open('./test/test_geotiff_fromObj.tif', 'w', **_args) as geotif:
+        geotif.write(lons, 1)
+        geotif.write(lats, 2)
+
+    # write GeoTiff from data
+    _args = dict(driver='GTiff', height=northing_.size, width=easting_.size, count=2, dtype='float64',
+                 crs=dst_grid._p_str,  transform=Affine.from_gdal(*gt_fromDat))
+    with rio.open('./test/test_geotiff_fromDat.tif', 'w', **_args) as geotif:
+        geotif.write(lons, 1)
+        geotif.write(lats, 2)
+
+
+
 """
 POLYGON((
         -1979779.8095711682 3710497.8493330223,
@@ -396,11 +435,8 @@ POLYGON((
         -1860988.4414337012 3825577.9646937074,
         -1944161.1160320693 3846815.185979576,
         -1979779.8095711682 3710497.8493330223))
-
-
-
-
 """
+
 def write_latlon_fromGrid(dst_name='gmuds', src_name='trishuli'):
 
     dst_grid = get_grid(dst_name)()
