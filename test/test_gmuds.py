@@ -124,6 +124,10 @@ def test_sw():
     nc_file = './test/SW2008012101.nc4'
     sw = gm.ShortWave(nc_file, load_on_init=True)
 
+def test_rain():
+    nc_file = './test/Rain2008012101.nc4'
+    pcp = gm.Precipitation(nc_file, load_on_init=True)
+
 
 def test_wind():
     nc_file = './test/Wind2008012101.nc4'
@@ -137,10 +141,15 @@ def test_merge():
     wn = gm.Wind(nc_file, load_on_init=True)
     nc_file = './test/Atmd2008012101.nc4'
     am = gm.Ambient(nc_file, load_on_init=True)
+    nc_file = './test/Rain2008012101.nc4'
+    pcp = gm.Precipitation(nc_file, load_on_init=True)
+
+
     _data_collection = {
         'ambient': am,
         'shortwave': sw,
-        'wind': wn
+        'wind': wn,
+        'precipitation': pcp
     }
 
     full = gm.Merge(_data_collection)
@@ -159,16 +168,19 @@ def test_time_series():
     _data_collection = {
         'ambient': gm.Ambient('./test/Atmd2008012101.nc4', load_on_init=True),
         'shortwave': gm.ShortWave( './test/SW2008012101.nc4', load_on_init=True),
-        'wind': gm.Wind('./test/Wind2008012101.nc4', load_on_init=True)
+        'wind': gm.Wind('./test/Wind2008012101.nc4', load_on_init=True),
+        'precipitation': gm.Precipitation('./test/Rain2008012101.nc4', load_on_init=True)
     }
     merge1 = gm.Merge(_data_collection)
     _data_collection = {
         'ambient': gm.Ambient('./test/Atmd2008012102.nc4', load_on_init=True),
         'shortwave': gm.ShortWave( './test/SW2008012102.nc4', load_on_init=True),
-        'wind': gm.Wind('./test/Wind2008012102.nc4', load_on_init=True)
+        'wind': gm.Wind('./test/Wind2008012102.nc4', load_on_init=True),
+        'precipitation': gm.Precipitation('./test/Rain2008012102.nc4', load_on_init=True)
     }
     merge2 = gm.Merge(_data_collection)
-    merge_list = gm.TimeSeries([merge1, merge2])
+    time_series = gm.TimeSeries([merge1, merge2])
+    time_series.write_daily('./test/ts_summary.nc4')
     pass
 
 
@@ -184,7 +196,13 @@ def test_lu_merge():
     lu = pickle.load(open(pck_file, 'rb'))
     group_dates = lu.groupby_date()
     date_ = group_dates[0][0]
-    merges_ = [gm.Merge(collection) for collection in group_dates[0][1]]
+    ct = 1
+    merges_ = []
+    for collection in group_dates[0][1]:
+        print('Merging: {}'.format(ct))
+        merges_.append(gm.Merge(collection))
+        ct += 1
+        #merges_ = [gm.Merge(collection) for collection in group_dates[0][1]]
     assert True
 
 
@@ -218,10 +236,121 @@ def test_write_time_series():
     nc4_file = os.path.join(main_path, './test/ts.nc4')
 
     time_series.write(nc4_file)
+def show_temps():
+    import matplotlib.pyplot as plt
+    import datetime
+    import glob
+
+    dt_prs = lambda x: datetime.datetime.strptime(os.path.basename(x), 'himat_gmuds_trishuli_dly_%Y%m%d.nc4')
+    date_files = glob.glob('dat/gmu_trishuli/*_dly_*.nc4')
+    date_files = sorted(date_files, key=dt_prs)
+    ct = 0
+
+    df_ = {k: gm.np.empty(len(date_files)) for k in ['Tad', 'Pad', 'RHd', 'Ld', 'Sd', 'U', 'V', 'PRECTOT']}
+    df_M = {k: gm.np.zeros((221, 168)) for k in ['Tad', 'Pad', 'RHd', 'Ld', 'Sd', 'U', 'V', 'PRECTOT']}
+    index_ = []
+    for file in date_files:
+
+        ds = gm.xr.open_dataset(file)
+        index_.append(dt_prs(file))
+
+        for k in df_:
+
+            if k == 'PRECTOT':
+                df_[k][ct] = (ds[k] * 3600).mean()
+                df_M[k] += ds[k] * 3600
+
+            else:
+                df_[k][ct] = ds[k].mean()
+                df_M[k] += ds[k]
+        ct += 1
+
+    # plot images
+
+    plt.close('all')
+
+    plt.figure(figsize=(12, 12 / 1.6))
+
+    ax = plt.subplot(3, 3, 1)
+    im = plt.imshow(df_M['Tad'] / ct)
+    plt.axis('off')
+    cb_ = plt.colorbar(im)
+    cb_.set_label('Surface Air Temperature [C]')
+
+    ax = plt.subplot(3, 3, 2)
+    im = plt.imshow(df_M['Pad'] / ct)
+    plt.axis('off')
+    cb_ = plt.colorbar(im)
+    cb_.set_label('Surface Pressure [Pa]')
+
+    ax = plt.subplot(3, 3, 3)
+    im = plt.imshow(df_M['RHd'] / ct)
+    plt.axis('off')
+    cb_ = plt.colorbar(im)
+    cb_.set_label('Surface Relative Humidity [%]')
+
+    ax = plt.subplot(3, 3, 4)
+    im = plt.imshow(df_M['Ld'] / ct)
+    plt.axis('off')
+    cb_ = plt.colorbar(im)
+    cb_.set_label('Surface Net Downward Longwave Flux [W/m^2]')
+
+    ax = plt.subplot(3, 3, 5)
+    im = plt.imshow(df_M['Sd'] / ct)
+    plt.axis('off')
+    cb_ = plt.colorbar(im)
+    cb_.set_label('Surface Net Downward Shortwave Flux [W/m^2]')
+
+    ax = plt.subplot(3, 3, 6)
+    im = plt.imshow(df_M['U'] / ct)
+    plt.axis('off')
+    cb_ = plt.colorbar(im)
+    cb_.set_label('Surface Wind Eastward [m/s]')
+
+    ax = plt.subplot(3, 3, 7)
+    im = plt.imshow(df_M['V'] / ct)
+    plt.axis('off')
+    cb_ = plt.colorbar(im)
+    cb_.set_label('Surface Wind Northward [m/s]')
+
+    ax = plt.subplot(3, 3, 8)
+    im = plt.imshow(df_M['PRECTOT'] / ct)
+    plt.axis('off')
+    cb_ = plt.colorbar(im)
+    cb_.set_label('Total precipitation (average) [mm]')
+
+    plt.tight_layout()
+    plt.savefig('average_vals.png', dpi=300)
+
+    plt.show()
+
+    plt.close('all')
+
+    df__ = gm.pd.DataFrame(df_, index=index_)
+    df1 = df__['2007-10-01':'2008-10-01']
+    df2 = df__['2013-10-01':'2014-10-01']
+
+    ax = plt.subplot(221)
+    df1['Tad'].plot(ax=ax)
+    plt.ylabel('temp. [C]', fontsize=7)
+
+    ax = plt.subplot(222)
+    df2['Tad'].plot(ax=ax)
+
+    ax = plt.subplot(223)
+    df1['PRECTOT'].plot(ax=ax)
+    plt.ylabel('precip. (avg.) [mm]', fontsize=7)
+    ax = plt.subplot(224)
+    df2['PRECTOT'].plot(ax=ax)
+
+    plt.show()
 
 
 def test_write_latlon():
     gm.write_latlon()
+
+def test_write_gtiff():
+    gm.write_gtiff()
 
 if __name__ == '__main__':
 
@@ -236,15 +365,21 @@ if __name__ == '__main__':
     #test_write_geotiff()
     #test_sw()
     #test_wind()
+    #test_rain()
     #test_merge()
     #test_data_lookup()
     #write_lu_pickle()
+    #test_lu_sort()
+    #print('time-series')
     #test_time_series()
     #test_get_daily()
+    #print('lu-merge')
     #test_lu_merge()
+    #print('lu-time-series')
     #test_lu_time_series()
+    #print('writing')
     #test_write_time_series()
-
-    test_write_latlon()
+    print('write latlon')
+    test_write_gtiff()
 
     pass

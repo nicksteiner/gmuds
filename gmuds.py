@@ -5,6 +5,7 @@ import datetime
 import copy
 from itertools import groupby
 from operator import itemgetter
+import glob
 
 import numpy as np
 import pandas as pd
@@ -23,8 +24,8 @@ print('Data Path: {}'.format(DAT_PATH))
 
 AMB_PATH = os.path.join(DAT_PATH, 'Ambient')
 SWR_PATH = os.path.join(DAT_PATH, 'SW')
-WND_PATH = os.path.join(DAT_PATH, 'UVWind')
-PRC_PATH = os.path.join(DAT_PATH, 'Ambient')
+WND_PATH = os.path.join(DAT_PATH, "UVWind")
+PRC_PATH = os.path.join(DAT_PATH, 'DRain_hyb')
 
 TRISHULI_PATH = os.path.join(_PATH, 'dat', 'gmu_trishuli')
 
@@ -102,7 +103,7 @@ class GmudsGrid(_Grid):
                 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"""
     _res = 1000
     _x0 = -3000000
-    _y0 = 5000000
+    _y0 =  5000000
     _shape = (2000, 3000)
 
 
@@ -111,7 +112,7 @@ class GmudGridTrishuli(_Grid):
                 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"""
     _res= 1000
     _x0 = -2004000
-    _y0 = 3877000
+    _y0 =  3877000
 
     _shape = (221, 168)
 
@@ -203,31 +204,30 @@ class _Dataset(object):
 
         # gt for x, y on grid row, col coordinates,
         gt_x0, gt_y1 = self.grid.forward(col0, row0)
-
         gt = (gt_x0, self.grid._res, 0, gt_y1, 0, -self.grid._res)
-
         ds = xr.open_dataset(self.nc_file)
 
-        try:
-            self.missing_value = ds.MissingValue
-            ds_ = {}
-            # time treated differently in files, should remedy
-            for var in self.data_vars:
-                ds_[var] = (('y', 'x', 'time'), np.expand_dims(ds[var][0,:,:].T[row0:row1, col0:col1], -1))
-            coords = {'easting' : (('x'),  ds['lon'][col0:col1]),
-                      'northing' : (('y'), ds['lat'][row0:row1]),
-                      'time': (('time'), np.array([self.start_date_time]).astype('datetime64[s]'))}
-            data_set = xr.Dataset(ds_, coords=coords)
-            data_set.attrs['gt'] = gt
-            data_set.attrs['crs'] = self.grid._p_str
-            for var in data_set.data_vars:
-                data_set[var].attrs['gt'] = gt
-                data_set[var].attrs['crs'] = self.grid._p_str
-            return data_set
-        except:
-            raise()
-        finally:
-            ds.close()
+        #try:
+        self.missing_value = ds.MissingValue
+        ds_ = {}
+        # time treated differently in files, should remedy
+        for var in self.data_vars:
+            ds_[var] = (('y', 'x', 'time'), np.expand_dims(ds[var][0,:,:].T[row0:row1, col0:col1], -1))
+        coords = {'easting' : (('x'),  ds['lon'][col0:col1]),
+                  'northing' : (('y'), ds['lat'][row0:row1]),
+                  'time': (('time'), np.array([self.start_date_time]).astype('datetime64[s]'))}
+        data_set = xr.Dataset(ds_, coords=coords)
+        data_set.attrs['gt'] = gt
+        data_set.attrs['crs'] = self.grid._p_str
+
+        for var in data_set.data_vars:
+            data_set[var].attrs['gt'] = gt
+            data_set[var].attrs['crs'] = self.grid._p_str
+        return data_set
+        #except:
+        #    raise()
+        #finally:
+        #    ds.close()
 
     def write_geotiff(self, data_array, file_name):
         assert data_array.ndim == 2
@@ -238,24 +238,39 @@ class _Dataset(object):
         with rio.open(file_name, 'w', **_args) as geotif:
             geotif.write(data_array.values, 1)
 
+
+_summary = {
+    'all': ['Tad', 'Pad', 'RHd', 'Ld', 'Sd', 'U', 'V', 'PRECTOT'],
+    'mean': ['Tad', 'Pad', 'RHd', 'Ld', 'Sd', 'U', 'V'],
+    'sum': ['PRECTOT']
+}
+
 class Ambient(_Dataset):
+
     data_vars = ['Tad', 'Pad', 'RHd', 'Ld']
 
+
 class ShortWave(_Dataset):
+
     data_vars = ['Sd']
 
+
 class Wind(_Dataset):
+
     data_vars = ['U', 'V']
 
+
 class Precipitation(_Dataset):
-    data_vars = []
+
+    data_vars = ['PRECTOT']
+
 
 class DataLookup(object):
 
     # these lists define order
-    data_names = ['ambient', 'shortwave', 'wind']
-    data_types = [Ambient, ShortWave, Wind]
-    data_paths = [AMB_PATH, SWR_PATH, WND_PATH]
+    data_names = ['ambient', 'shortwave', 'wind', 'precipitation']
+    data_types = [Ambient, ShortWave, Wind, Precipitation]
+    data_paths = [AMB_PATH, SWR_PATH, WND_PATH, PRC_PATH]
 
     def __init__(self, grid='gmuds'):
         for data_name, data_type, data_path in zip(self.data_names, self.data_types, self.data_paths):
@@ -330,7 +345,11 @@ class Merge(object):
         self.data_set = self.combine()
 
     def combine(self):
-        data_list = [data.load() for data in self.data_collection.values()]
+        data_list = []
+        for data in self.data_collection.values():
+            print('Loading data: {}'.format(data.nc_file))
+            data_list.append(data.load())
+        #data_list = [data.load() for data in self.data_collection.values()]
         return xr.merge(data_list)
 
 
@@ -342,14 +361,34 @@ class TimeSeries(object):
     def write(self, file_name):
         self.data_set.to_netcdf(file_name)
 
+    def write_daily(self, file_name):
+
+        summary = {}
+        summary['mean'] = self.data_set.mean(dim='time')
+        summary['sum'] = self.data_set.sum(dim='time')
+
+        daily_  = {}
+        for var in _summary['all']:
+            if var in _summary['mean']:
+                daily_[var] = summary['mean'][var]
+
+            elif var in _summary['sum']:
+                daily_[var] = summary['sum'][var]
+
+        daily_ds = xr.Dataset(daily_)
+        daily_ds['PRECTOT'] = daily_ds.PRECTOT# * 86400 # to kg/m^2
+        daily_ds.to_netcdf(file_name)
+
 
 def write_daily():
     lu = DataLookup()
     group_dates = lu.groupby_date()
     for (date, collections) in group_dates:
         print('DATE: {}'.format(date))
-        nc4_file = 'himat_gmuds_trishuli_daily_{}.nc4'.format(date.strftime('%Y%m%d'))
+        nc4_file =       'himat_gmuds_trishuli_hourly_{}.nc4'.format(date.strftime('%Y%m%d'))
+        nc4_file_daily = 'himat_gmuds_trishuli_daily_{}.nc4'.format(date.strftime('%Y%m%d'))
         nc4_path = os.path.join(TRISHULI_PATH, nc4_file)
+        nc4_path_daily = os.path.join(TRISHULI_PATH, nc4_file_daily)
         print(nc4_path)
 
         if not os.path.exists(nc4_path):
@@ -357,6 +396,7 @@ def write_daily():
             merge_list = [Merge(collection) for collection in collections_]
             time_series = TimeSeries(merge_list)
             time_series.write(nc4_path)
+            time_series.write_daily(nc4_path_daily)
 
 
 def write_latlon():
@@ -471,8 +511,31 @@ def write_latlon_fromGrid(dst_name='gmuds', src_name='trishuli'):
     data_set = xr.Dataset(latlon_ds, coords=coords)
     data_set.to_netcdf(os.path.join(DAT_PATH, 'latlon_trishuli_gmu_ds.nc4'), mode='w')
 
+def write_gtiff():
+
+    nc_file = 'dat/gmu_trishuli/himat_gmuds_trishuli_dly_20071110.nc4'
+    grid = GmudGridTrishuli()
+
+    data_set = xr.open_dataset(nc_file)
+    data_array = data_set.data_vars['Tad']
+
+    _args = dict(driver='GTiff', height=data_array.shape[0], width=data_array.shape[1],
+                 count=1, dtype=data_array.dtype.name, crs=grid.p.srs,
+                 transform=Affine.from_gdal(*grid.gt))
+
+    with rio.open(nc_file.replace('nc4', 'tif'), 'w', **_args) as geotif:
+        geotif.write(data_array.values, 1)
+
+
+
+
+
+WRITE = False # edit to change function
+
 def main():
-    write_daily()
+    if WRITE:
+        write_daily()
+    write_gtiff()
 
 if __name__ == '__main__':
     sys.exit(main())
