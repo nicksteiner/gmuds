@@ -43,10 +43,10 @@ hourly precipitation rate for October 4th, 2009.
 
 ## Figures
 
-![average_vals.png](average_vals.png)
+![average_vals.png](images/average_vals.png)
 **Figure 1.** Variable averages of all daily measurements in wy2008 and wy2014.
 
-![time-ts.png](ts.png)
+![time-ts.png](images/ts.png)
 **Figure 2.** Times-series of average daily measurements in wy2008 and wy2014.
 
 
